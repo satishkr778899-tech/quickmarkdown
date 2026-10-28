@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Markdown Workspace</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 h-screen flex flex-col transition-colors">
+
+    <!-- Header & Controls -->
+    <header class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 flex flex-wrap justify-between items-center shadow-sm gap-2">
+        <div class="flex items-center gap-2">
+            <h1 class="text-lg font-bold">⚡ Pro Markdown Workspace</h1>
+            <span id="status" class="text-xs text-green-500 font-medium">Saved</span>
+        </div>
+        
+        <!-- Action Buttons -->
+        <div class="flex items-center gap-2 text-sm">
+            <button onclick="downloadFile()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition cursor-pointer">Download .md</button>
+            <button onclick="clearText()" class="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-md transition cursor-pointer">Clear</button>
+            <button onclick="toggleDarkMode()" class="px-3 py-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 text-gray-800 dark:text-gray-100 rounded-md transition cursor-pointer">🌓 Theme</button>
+            
+<button id="addFileBtn"
+    class="px-3 py-1.5 border rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">
+    + Add File
+</button>
+
+<select id="fileList"
+    class="hidden max-w-40 px-2 py-1.5 border rounded-md bg-white dark:bg-gray-700"
+    aria-label="Select Markdown file">
+</select>
+
+<button id="signInBtn"
+    class="px-3 py-1.5 border rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">
+    Sign in
+</button>
+
+<button id="signOutBtn"
+    class="hidden px-3 py-1.5 border rounded-md">
+    Sign out
+</button>
+
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 grid grid-cols-1 md:grid-cols-2 overflow-hidden">
+        <!-- Editor -->
+        <textarea id="editor" spellcheck="false"
+            class="w-full h-full p-6 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 resize-none focus:outline-none font-mono text-sm leading-relaxed" 
+            placeholder="Type your markdown here..."></textarea>
+        
+        <!-- Preview -->
+        <div id="preview" 
+            class="w-full h-full p-6 overflow-auto bg-gray-50 dark:bg-gray-900 prose dark:prose-invert max-w-none"></div>
+    </main>
+
+    <!-- Footer Stats -->
+    <footer class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-6 py-2 text-xs text-gray-500 flex justify-between">
+        <div>Words: <span id="word-count">0</span> | Characters: <span id="char-count">0</span></div>
+        <div>Auto-saves to browser</div>
+    </footer>
+
+    <!-- Logic -->
+     
+<!-- New authentication popup -->
+<div id="accountModal"
+    class="hidden fixed inset-0 z-50 bg-black/50 items-center justify-center p-4">
+
+    <div class="w-full max-w-sm bg-white dark:bg-gray-800 rounded-xl p-6 shadow-xl">
+        <div class="flex justify-between items-center mb-4">
+            <h2 id="accountTitle" class="text-xl font-bold">Sign in</h2>
+            <button id="closeAccount" type="button" class="text-2xl">&times;</button>
+        </div>
+
+        <form id="accountForm" class="space-y-3">
+            <input id="accountEmail" type="email" required
+                placeholder="Email address"
+                autocomplete="email"
+                class="w-full border rounded-md p-2 bg-transparent">
+
+            <input id="accountPassword" type="password" required minlength="6"
+                placeholder="Password"
+                autocomplete="current-password"
+                class="w-full border rounded-md p-2 bg-transparent">
+
+            <button id="accountSubmit" type="submit"
+                class="w-full rounded-md bg-blue-600 hover:bg-blue-700 text-white p-2">
+                Sign in
+            </button>
+        </form>
+
+        <p id="accountMessage" class="text-sm mt-3" role="status"></p>
+
+        <button id="switchAccountMode" type="button"
+            class="text-sm text-blue-600 underline mt-3">
+            Create an account
+        </button>
+    </div>
+</div>
+
+    <script>
+        const editor = document.getElementById('editor');
+        const preview = document.getElementById('preview');
+        const status = document.getElementById('status');
+        const wordCount = document.getElementById('word-count');
+        const charCount = document.getElementById('char-count');
+
+        // Load saved content on startup
+        const saved = localStorage.getItem('pro_markdown_note');
+        if (saved !== null) {
+            editor.value = saved;
+        } else {
+            editor.value = "# Welcome!\nStart typing markdown here... \n\n- Try typing **bold** or *italic*";
+        }
+        updateUI();
+
+        // Listen to typing events
+        editor.addEventListener('input', () => {
+            updateUI();
+            localStorage.setItem('pro_markdown_note', editor.value);
+            status.textContent = "Saving...";
+            setTimeout(() => { status.textContent = "Saved"; }, 400);
+        });
+
+        function updateUI() {
+            const val = editor.value;
+            preview.innerHTML = marked.parse(val);
+            charCount.textContent = val.length;
+            wordCount.textContent = val.trim() ? val.trim().split(/\s+/).length : 0;
+        }
+
+        function downloadFile() {
+            const blob = new Blob([editor.value], { type: 'text/markdown' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'my-note.md';
+            a.click();
+        }
+
+        function clearText() {
+            if(confirm("Kya aap saara text delete karna chahte hain?")) {
+                editor.value = "";
+                updateUI();
+                localStorage.removeItem('pro_markdown_note');
+            }
+        }
+
+        function toggleDarkMode() {
+            document.documentElement.classList.toggle('dark');
+        }
+const ADDON_URL = "https://mgjxkqjmwovowvsqxrbj.supabase.co";
+const ADDON_KEY = "sb_publishable_c8IJEypjEzs0yhivx30oZA_is1fBjlJ";
+
+const ADDON_FILES_KEY = "quickmarkdown_files_v1";
+
+const addFileBtn = document.getElementById("addFileBtn");
+const fileList = document.getElementById("fileList");
+const signInBtn = document.getElementById("signInBtn");
+const signOutBtn = document.getElementById("signOutBtn");
+
+const accountModal = document.getElementById("accountModal");
+const accountForm = document.getElementById("accountForm");
+const accountEmail = document.getElementById("accountEmail");
+const accountPassword = document.getElementById("accountPassword");
+const accountTitle = document.getElementById("accountTitle");
+const accountSubmit = document.getElementById("accountSubmit");
+const accountMessage = document.getElementById("accountMessage");
+const switchAccountMode = document.getElementById("switchAccountMode");
+
+let addonSupabase = null;
+let addonUser = null;
+let addonMode = "signin";
+let addonFiles = [];
+let addonCurrentId = null;
+let addonSaveTimer = null;
+let addonLoading = false;
+
+function addonStatus(message, error = false) {
+    status.textContent = message;
+    status.className = "text-xs font-medium " +
+        (error ? "text-red-500" : "text-green-500");
+}
+
+// Load existing content into the first file without losing it.
+try {
+    addonFiles = JSON.parse(
+        localStorage.getItem(ADDON_FILES_KEY) || "null"
+    );
+
+    if (!Array.isArray(addonFiles) || addonFiles.length === 0) {
+        addonFiles = [{
+            id: "local-" + Date.now(),
+            title: "My Note",
+            content: editor.value
+        }];
+    }
+} catch (error) {
+    addonFiles = [{
+        id: "local-" + Date.now(),
+        title: "My Note",
+        content: editor.value
+    }];
+}
+
+addonCurrentId = addonFiles[0].id;
+
+function addonRenderFiles(selectedId = addonCurrentId) {
+    const files = addonUser ? addonCloudFiles : addonFiles;
+
+    fileList.innerHTML = "";
+
+    files.forEach(file => {
+        const option = document.createElement("option");
+        option.value = file.id;
+        option.textContent = file.title || "Untitled";
+        fileList.appendChild(option);
+    });
+
+    fileList.classList.toggle("hidden", files.length === 0);
+
+    if (selectedId) fileList.value = selectedId;
+}
+
+function addonSaveLocalList() {
+    localStorage.setItem(ADDON_FILES_KEY, JSON.stringify(addonFiles));
+}
+
+function addonLoadFile(file) {
+    if (!file) return;
+
+    clearTimeout(addonSaveTimer);
+    addonCurrentId = file.id;
+    addonLoading = true;
+
+    editor.value = file.content || "";
+
+    // Calls your existing function; it is not replaced.
+    updateUI();
+
+    addonLoading = false;
+    localStorage.setItem("pro_markdown_note", editor.value);
+    addonRenderFiles(file.id);
+    addonStatus("Saved");
+}
+
+function addonSaveCurrent() {
+    if (addonLoading) return;
+
+    const content = editor.value;
+    localStorage.setItem("pro_markdown_note", content);
+
+    if (!addonUser || !addonSupabase) {
+        const file = addonFiles.find(item => item.id === addonCurrentId);
+
+        if (file) file.content = content;
+
+        addonSaveLocalList();
+        addonStatus("Saved");
+        return;
+    }
+
+    const fileId = addonCurrentId;
+
+    addonSupabase
+        .from("markdown_files")
+        .update({
+            content,
+            updated_at: new Date().toISOString()
+        })
+        .eq("id", fileId)
+        .eq("user_id", addonUser.id)
+        .then(({ error }) => {
+            if (error) {
+                console.error(error);
+                addonStatus("Cloud save failed", true);
+            } else if (fileId === addonCurrentId) {
+                addonStatus("Saved");
+            }
+        });
+}
+
+// Add File button.
+addFileBtn.addEventListener("click", async () => {
+    const title = prompt("Enter file name:", "Untitled");
+    if (title === null) return;
+
+    const cleanTitle = title.trim() || "Untitled";
+
+    if (addonUser && addonSupabase) {
+        const { data, error } = await addonSupabase
+            .from("markdown_files")
+            .insert({
+                user_id: addonUser.id,
+                title: cleanTitle,
+                content: ""
+            })
+            .select("id,title,content")
+            .single();
+
+        if (error) {
+            alert("Could not add file: " + error.message);
+            return;
+        }
+
+        addonCloudFiles.unshift(data);
+        addonLoadFile(data);
+    } else {
+        const file = {
+            id: "local-" + Date.now(),
+            title: cleanTitle,
+            content: ""
+        };
+
+        addonFiles.unshift(file);
+        addonSaveLocalList();
+        addonLoadFile(file);
+    }
+});
+
+// Select a different file.
+fileList.addEventListener("change", () => {
+    const files = addonUser ? addonCloudFiles : addonFiles;
+    const file = files.find(item => item.id === fileList.value);
+
+    if (file) addonLoadFile(file);
+});
+
+// Extra listener: preserves your original editor listener.
+editor.addEventListener("input", () => {
+    if (addonLoading) return;
+
+    const file = addonFiles.find(item => item.id === addonCurrentId);
+
+    if (!addonUser && file) {
+        file.content = editor.value;
+        addonSaveLocalList();
+    }
+
+    clearTimeout(addonSaveTimer);
+    addonSaveTimer = setTimeout(addonSaveCurrent, 600);
+});
+
+// Account popup.
+function addonOpenAccount(mode = "signin") {
+    addonMode = mode;
+    accountTitle.textContent =
+        mode === "signin" ? "Sign in" : "Create account";
+    accountSubmit.textContent =
+        mode === "signin" ? "Sign in" : "Sign up";
+    switchAccountMode.textContent =
+        mode === "signin"
+            ? "Create an account"
+            : "Already have an account? Sign in";
+
+    accountMessage.textContent = "";
+    accountModal.classList.remove("hidden");
+    accountModal.classList.add("flex");
+}
+
+function addonCloseAccount() {
+    accountModal.classList.add("hidden");
+    accountModal.classList.remove("flex");
+}
+
+signInBtn.addEventListener("click", () => addonOpenAccount("signin"));
+
+document.getElementById("closeAccount").addEventListener(
+    "click", addonCloseAccount
+);
+
+switchAccountMode.addEventListener("click", () => {
+    addonOpenAccount(addonMode === "signin" ? "signup" : "signin");
+});
+
+accountModal.addEventListener("click", event => {
+    if (event.target === accountModal) addonCloseAccount();
+});
+
+async function addonLoadCloudFiles() {
+    const { data, error } = await addonSupabase
+        .from("markdown_files")
+        .select("id,title,content")
+        .order("updated_at", { ascending: false });
+
+    if (error) {
+        addonStatus("Cloud loading failed", true);
+        alert(error.message);
+        return;
+    }
+
+    addonCloudFiles = data || [];
+
+    if (addonCloudFiles.length === 0) {
+        const { data: first, error: createError } = await addonSupabase
+            .from("markdown_files")
+            .insert({
+                user_id: addonUser.id,
+                title: "My Note",
+                content: editor.value
+            })
+            .select("id,title,content")
+            .single();
+
+        if (createError) {
+            alert(createError.message);
+            return;
+        }
+
+        addonCloudFiles = [first];
+    }
+
+    addonLoadFile(addonCloudFiles[0]);
+}
+
+let addonCloudFiles = [];
+
+accountForm.addEventListener("submit", async event => {
+    event.preventDefault();
+
+    if (!addonSupabase) {
+        accountMessage.textContent =
+            "Add your Supabase URL and Publishable key in this code first.";
+        accountMessage.className = "text-sm mt-3 text-red-500";
+        return;
+    }
+
+    accountSubmit.disabled = true;
+
+    try {
+        let result;
+
+        if (addonMode === "signup") {
+            result = await addonSupabase.auth.signUp({
+                email: accountEmail.value.trim(),
+                password: accountPassword.value
+            });
+        } else {
+            result = await addonSupabase.auth.signInWithPassword({
+                email: accountEmail.value.trim(),
+                password: accountPassword.value
+            });
+        }
+
+        if (result.error) throw result.error;
+
+        if (addonMode === "signup" && !result.data.session) {
+            accountMessage.textContent =
+                "Account created. Check your email to confirm, then sign in.";
+            accountMessage.className = "text-sm mt-3 text-green-600";
+            return;
+        }
+
+        addonCloseAccount();
+        await addonApplySession(result.data.session);
+
+    } catch (error) {
+        accountMessage.textContent = error.message;
+        accountMessage.className = "text-sm mt-3 text-red-500";
+    } finally {
+        accountSubmit.disabled = false;
+    }
+});
+
+async function addonApplySession(session) {
+    addonUser = session?.user || null;
+
+    if (addonUser) {
+        signInBtn.textContent = addonUser.email || "Signed in";
+        signOutBtn.classList.remove("hidden");
+        await addonLoadCloudFiles();
+    } else {
+        signInBtn.textContent = "Sign in";
+        signOutBtn.classList.add("hidden");
+
+        addonUser = null;
+        addonRenderFiles(addonCurrentId);
+    }
+}
+
+signOutBtn.addEventListener("click", async () => {
+    if (!addonSupabase || !confirm("Sign out?")) return;
+
+    const { error } = await addonSupabase.auth.signOut();
+
+    if (error) alert(error.message);
+});
+
+if (
+    ADDON_URL.startsWith("https://") &&
+    !ADDON_URL.includes("PASTE_YOUR_") &&
+    ADDON_KEY &&
+    !ADDON_KEY.includes("PASTE_YOUR_")
+) {
+    addonSupabase = window.supabase.createClient(ADDON_URL, ADDON_KEY);
+
+    addonSupabase.auth.getSession().then(async ({ data, error }) => {
+        if (error) {
+            console.error(error);
+            return;
+        }
+
+        await addonApplySession(data.session);
+    });
+
+    addonSupabase.auth.onAuthStateChange((_event, session) => {
+        setTimeout(() => addonApplySession(session), 0);
+    });
+} else {
+    addonRenderFiles(addonCurrentId);
+}
+       
+    </script>
+</body>
+</html>
